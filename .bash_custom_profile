@@ -1,0 +1,155 @@
+#!/bin/bash
+
+
+if [[ -z "$heredoc_option" ]]; then
+declare heredoc_option=$(cat <<'script_code'
+declare -g  __out_key; \
+declare -g  __out_val; \
+declare -ag __out_array; \
+function exit_with() { \
+    declare exit_code=5; \
+    declare func_stack="${FUNCNAME[@]:1}"; \
+    declare tip="${1}"; \
+    declare message="exit ${exit_code}: stack~~($func_stack) tip~~ ${tip}"; \
+    echo "$message">&2; \
+    exit "$exit_code"; \
+}; \
+function parse_kv() { \
+    declare input_string="$1"; \
+    declare key="${input_string%%=*}"; \
+    declare val="${input_string#*=}"; \
+    declare key_regex="^[a-zA-Z0-9_]+$"; \
+    [[ -z "$key" ]] && { exit_with "key empty ${input_string}"; }; \
+    [[ $key =~ $key_regex ]] || { exit_with "key format error: $key"; }; \
+    [[ "$val" = "$input_string" ]] && { val=yep; }; \
+    [[ "$val" = "no" ]] && { val=""; }; \
+    __out_key="${key}"; \
+    __out_val="${val}"; \
+    __out_array=("${key}" "${val}"); \
+}; \
+for __option_name in ${__option_names[@]}; do declare "__option_${__option_name}="; done; \
+declare option_regex="--[^-]+"; \
+while true; do \
+    part="$1"; \
+    [[ $part =~ $option_regex ]] || { break; }; \
+    part="${part#--}"; \
+    parse_kv "$part"; \
+    __out_key="__option_${__out_key}"; \
+    declare "$__out_key=$__out_val"; \
+    shift; \
+done
+script_code
+)
+export heredoc_option
+fi
+
+function getField() {
+eval "${heredoc_option2}"
+cat - | sed '1d' | python3 -c "
+import os, sys, json, re
+while True:
+    line=sys.stdin.readline()
+    if not line: break
+    line=line.rstrip()
+    rs = re.split('${__option_sep:-\s+}', line)
+    r = rs[${__option_slice:--1}]
+    if isinstance(r, list):
+        r = ' '.join(r)
+    print(r)
+"
+}
+
+if [[ -z "$heredoc_option2" ]]; then
+declare heredoc_option2=$(cat <<'script_code'
+declare -ag __all_option; \
+declare -g  __out_key; \
+declare -g  __out_val; \
+declare -ag __out_array; \
+function exit_with() { \
+    declare exit_code=5; \
+    declare func_stack="${FUNCNAME[@]:1}"; \
+    declare tip="${1}"; \
+    declare message="exit ${exit_code}: stack~~($func_stack) tip~~ ${tip}"; \
+    echo "$message">&2; \
+    exit "$exit_code"; \
+}; \
+function parse_kv() { \
+    declare input_string="$1"; \
+    declare key="${input_string%%=*}"; \
+    declare val="${input_string#*=}"; \
+    declare key_regex="^[a-zA-Z0-9_]+$"; \
+    [[ -z "$key" ]] && { exit_with "key empty ${input_string}"; }; \
+    [[ $key =~ $key_regex ]] || { exit_with "key format error: $key"; }; \
+    [[ "$val" = "$input_string" ]] && { val=yep; }; \
+    [[ "$val" = "no" ]] && { val=""; }; \
+    __out_key="${key}"; \
+    __out_val="${val}"; \
+    __out_array=("${key}" "${val}"); \
+}; \
+for __option_name in ${__option_names[@]}; do declare "__option_${__option_name}="; done; \
+declare option_regex="--[^-]+"; \
+while true; do \
+    part="$1"; \
+    [[ $part =~ $option_regex ]] || { break; }; \
+    part="${part#--}"; \
+    parse_kv "$part"; \
+    __out_key="__option_${__out_key}"; \
+    declare "$__out_key=$__out_val"; \
+    __all_option+=("$__out_key"); \
+    shift; \
+done;
+script_code
+)
+export heredoc_option2
+fi
+# use in shell, so we use alias
+alias "layer=echo $SHLVL"
+alias "frontail=frontail -t dark"
+function tmuxWindowName() {
+    tmux display-message -p -F '#{window_name}' -t "$TMUX_PANE"
+}
+function tmuxSessionName() {
+    tmux display-message -p -F '#{session_name}' -t "$TMUX_PANE"
+}
+export CADDY_ROOT="$HOME/.caddy_file_server_root"
+function toCaddyData() {
+    declare DUMP_PATH="$CADDY_ROOT/data/${1:?}"
+    cat - > "$DUMP_PATH"
+}
+function removeCaddyData() {
+    declare REMOVE_PATH="$CADDY_ROOT/data/${1:?}"
+    rm -rf "$REMOVE_PATH"
+}
+function recordscript() {
+    /usr/bin/script --flush \
+        ${CADDY_ROOT}/typescript/`tmuxSessionName`_$$_`TZ='Asia/Shanghai' date +%Y-%m-%dT%H:%M:%S`.md
+}
+function shrinktypescript() {
+    # TODO 将两个prompt中间的部分给删掉 缩减内容
+    cat - | wc -l
+}
+function find_process() {
+    # todo: user name
+    ps aux | awk -v keyword="$1" '!/awk/ && $0 ~ keyword {print $2}'
+}
+print_timestamp() {
+    echo -ne "\n[`layer`] $(TZ='Asia/Shanghai' date "+%Y-%m-%d %H:%M:%S") "
+}
+export PROMPT_COMMAND=print_timestamp
+switch_timeprompt() {
+    if [[ -z "$PROMPT_COMMAND" ]]; then
+        export PROMPT_COMMAND=print_timestamp
+    else
+        unset PROMPT_COMMAND
+    fi
+}
+
+function du1() {
+    eval "${heredoc_option:?}"
+    du -h --max-depth=1 ${1:-$HOME} | sort -rh | head -n ${__option_n:-10}
+}
+function sedi() {
+    sed -i $@
+}
+
+export PATH=$HOME/.local/agency_bin:$PATH
